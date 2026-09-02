@@ -81,6 +81,8 @@ pipeline {
                     string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                 ]) {
                     script {
+                        env.TF_SUBSCRIPTION_ID = env.ARM_SUBSCRIPTION_ID
+
                         def stateAccount = params.TFSTATE_STORAGE_ACCOUNT?.trim()
                         if (!stateAccount) {
                             stateAccount = "jdalztfstate${env.ARM_SUBSCRIPTION_ID.substring(0, 8).toLowerCase()}"
@@ -142,8 +144,15 @@ pipeline {
         stage('Adopt Existing Azure Resources') {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
-                    withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "ARM_SUBSCRIPTION_ID=${env.ARM_SUBSCRIPTION_ID}", "TF_VAR_subscription_id=${env.ARM_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
-                        powershell '.\\..\\..\\scripts\\adopt-existing.ps1'
+                    withCredentials([
+                        string(credentialsId: 'azure-client-id', variable: 'ARM_CLIENT_ID'),
+                        string(credentialsId: 'azure-client-secret', variable: 'ARM_CLIENT_SECRET'),
+                        string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
+                        string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
+                    ]) {
+                        withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
+                            powershell '.\\..\\..\\scripts\\adopt-existing.ps1'
+                        }
                     }
                 }
             }
@@ -160,16 +169,23 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
-                    withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "ARM_SUBSCRIPTION_ID=${env.ARM_SUBSCRIPTION_ID}", "TF_VAR_subscription_id=${env.ARM_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
-                        bat '''
-                            @echo off
-                            if /I "%ACTION%"=="DESTROY" (
-                                terraform plan -destroy -input=false -out=tfplan
-                            ) else (
-                                terraform plan -input=false -out=tfplan
-                            )
-                            if errorlevel 1 exit /b 1
-                        '''
+                    withCredentials([
+                        string(credentialsId: 'azure-client-id', variable: 'ARM_CLIENT_ID'),
+                        string(credentialsId: 'azure-client-secret', variable: 'ARM_CLIENT_SECRET'),
+                        string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
+                        string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
+                    ]) {
+                        withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
+                            bat '''
+                                @echo off
+                                if /I "%ACTION%"=="DESTROY" (
+                                    terraform plan -destroy -input=false -out=tfplan
+                                ) else (
+                                    terraform plan -input=false -out=tfplan
+                                )
+                                if errorlevel 1 exit /b 1
+                            '''
+                        }
                     }
                 }
             }
@@ -204,12 +220,19 @@ pipeline {
             }
             steps {
                 dir("${env.TF_WORKING_DIR}") {
-                    withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "ARM_SUBSCRIPTION_ID=${env.ARM_SUBSCRIPTION_ID}", "TF_VAR_subscription_id=${env.ARM_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
-                        bat '''
-                            @echo off
-                            terraform apply -input=false -auto-approve tfplan
-                            if errorlevel 1 exit /b 1
-                        '''
+                    withCredentials([
+                        string(credentialsId: 'azure-client-id', variable: 'ARM_CLIENT_ID'),
+                        string(credentialsId: 'azure-client-secret', variable: 'ARM_CLIENT_SECRET'),
+                        string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
+                        string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
+                    ]) {
+                        withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
+                            bat '''
+                                @echo off
+                                terraform apply -input=false -auto-approve tfplan
+                                if errorlevel 1 exit /b 1
+                            '''
+                        }
                     }
                 }
             }
