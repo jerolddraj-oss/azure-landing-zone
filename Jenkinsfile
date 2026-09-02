@@ -33,7 +33,14 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
-                    bat 'terraform init -upgrade -input=false'
+                    withCredentials([
+                        string(credentialsId: 'azure-client-id', variable: 'ARM_CLIENT_ID'),
+                        string(credentialsId: 'azure-client-secret', variable: 'ARM_CLIENT_SECRET'),
+                        string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
+                        string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
+                    ]) {
+                        bat 'terraform init -upgrade -input=false'
+                    }
                 }
             }
         }
@@ -49,11 +56,8 @@ pipeline {
         stage('Azure Login') {
             steps {
                 withCredentials([
-                    usernamePassword(
-                        credentialsId: 'azure-service-principal',
-                        usernameVariable: 'ARM_CLIENT_ID',
-                        passwordVariable: 'ARM_CLIENT_SECRET'
-                    ),
+                    string(credentialsId: 'azure-client-id', variable: 'ARM_CLIENT_ID'),
+                    string(credentialsId: 'azure-client-secret', variable: 'ARM_CLIENT_SECRET'),
                     string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                     string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                 ]) {
@@ -73,11 +77,8 @@ pipeline {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
                     withCredentials([
-                        usernamePassword(
-                            credentialsId: 'azure-service-principal',
-                            usernameVariable: 'ARM_CLIENT_ID',
-                            passwordVariable: 'ARM_CLIENT_SECRET'
-                        ),
+                        string(credentialsId: 'azure-client-id', variable: 'ARM_CLIENT_ID'),
+                        string(credentialsId: 'azure-client-secret', variable: 'ARM_CLIENT_SECRET'),
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
@@ -112,11 +113,8 @@ pipeline {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
                     withCredentials([
-                        usernamePassword(
-                            credentialsId: 'azure-service-principal',
-                            usernameVariable: 'ARM_CLIENT_ID',
-                            passwordVariable: 'ARM_CLIENT_SECRET'
-                        ),
+                        string(credentialsId: 'azure-client-id', variable: 'ARM_CLIENT_ID'),
+                        string(credentialsId: 'azure-client-secret', variable: 'ARM_CLIENT_SECRET'),
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
