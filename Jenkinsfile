@@ -9,6 +9,14 @@ pipeline {
         skipDefaultCheckout(false)
     }
 
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['APPLY', 'DESTROY'],
+            description: 'Terraform action. APPLY creates/updates the landing zone. DESTROY permanently removes managed resources.'
+        )
+    }
+
     environment {
         TF_IN_AUTOMATION = 'true'
         TF_INPUT         = 'false'
@@ -82,7 +90,15 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        bat 'set TF_VAR_subscription_id=%ARM_SUBSCRIPTION_ID% && terraform plan -input=false -out=tfplan'
+                        bat '''
+                            @echo off
+                            set TF_VAR_subscription_id=%ARM_SUBSCRIPTION_ID%
+                            if /I "%ACTION%"=="DESTROY" (
+                                terraform plan -destroy -input=false -out=tfplan
+                            ) else (
+                                terraform plan -input=false -out=tfplan
+                            )
+                        '''
                     }
                 }
             }
@@ -96,14 +112,20 @@ pipeline {
                 }
             }
             steps {
-                timeout(time: 30, unit: 'MINUTES') {
-                    input message: 'Review the Terraform plan and approve deployment to Azure East US.',
-                          ok: 'Approve Apply'
+                script {
+                    def approvalMessage = params.ACTION == 'DESTROY'
+                        ? 'DANGER: Review the Terraform DESTROY plan. This will permanently delete resources managed by this configuration. Approve only if you are certain.'
+                        : 'Review the Terraform APPLY plan and approve deployment to Azure East US.'
+
+                    timeout(time: 30, unit: 'MINUTES') {
+                        input message: approvalMessage,
+                              ok: params.ACTION == 'DESTROY' ? 'Approve DESTROY' : 'Approve APPLY'
+                    }
                 }
             }
         }
 
-        stage('Terraform Apply') {
+        stage('Terraform Apply / Destroy') {
             when {
                 allOf {
                     branch 'main'
