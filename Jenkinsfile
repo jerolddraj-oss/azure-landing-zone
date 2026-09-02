@@ -62,10 +62,8 @@ pipeline {
                         @echo off
                         az login --service-principal --username "%ARM_CLIENT_ID%" --password "%ARM_CLIENT_SECRET%" --tenant "%ARM_TENANT_ID%" --output none
                         if errorlevel 1 exit /b 1
-
                         az account set --subscription "%ARM_SUBSCRIPTION_ID%"
                         if errorlevel 1 exit /b 1
-
                         echo Azure authentication successful.
                     '''
                 }
@@ -81,11 +79,18 @@ pipeline {
                     string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                 ]) {
                     script {
-                        env.TF_SUBSCRIPTION_ID = env.ARM_SUBSCRIPTION_ID
+                        def subscriptionId = env.ARM_SUBSCRIPTION_ID?.trim()
+                        if (!subscriptionId) {
+                            error('Azure subscription ID credential is empty.')
+                        }
+                        env.TF_SUBSCRIPTION_ID = subscriptionId
 
                         def stateAccount = params.TFSTATE_STORAGE_ACCOUNT?.trim()
                         if (!stateAccount) {
-                            stateAccount = "jdalztfstate${env.ARM_SUBSCRIPTION_ID.substring(0, 8).toLowerCase()}"
+                            stateAccount = "jdalztfstate${subscriptionId.replaceAll(/[^A-Za-z0-9]/, '').take(16).toLowerCase()}"
+                        }
+                        if (!(stateAccount ==~ /^[a-z0-9]{3,24}$/)) {
+                            error("Invalid Terraform state storage account name: ${stateAccount}. Use only 3-24 lowercase letters and numbers.")
                         }
 
                         env.TFSTATE_RESOURCE_GROUP = 'jd-alz-tfstate-rg'
@@ -95,40 +100,37 @@ pipeline {
 
                         bat '''
                             @echo off
+                            set "STATE_READY=0"
+
                             az group create --name "%TFSTATE_RESOURCE_GROUP%" --location "East US" --output none
                             if errorlevel 1 exit /b 1
 
                             az storage account show --resource-group "%TFSTATE_RESOURCE_GROUP%" --name "%TFSTATE_STORAGE_ACCOUNT%" --output none >nul 2>&1
-                            if errorlevel 1 (
-                                echo Terraform state storage account not found. Creating it...
-                                az storage account create --resource-group "%TFSTATE_RESOURCE_GROUP%" --name "%TFSTATE_STORAGE_ACCOUNT%" --location "East US" --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false --output none
-                                if errorlevel 1 exit /b 1
-                            )
+                            if not errorlevel 1 goto storage_exists
 
+                            echo Terraform state storage account not found. Creating it...
+                            az storage account create --resource-group "%TFSTATE_RESOURCE_GROUP%" --name "%TFSTATE_STORAGE_ACCOUNT%" --location "East US" --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false --output none
+                            if errorlevel 1 exit /b 1
+
+                            :storage_exists
                             echo Waiting for Terraform state storage account to become available...
-                            set "STORAGE_READY="
-                            for /L %%N in (1,1,12) do (
+                            for /L %%N in (1,1,24) do (
                                 az storage account show --resource-group "%TFSTATE_RESOURCE_GROUP%" --name "%TFSTATE_STORAGE_ACCOUNT%" --output none >nul 2>&1
                                 if not errorlevel 1 (
-                                    set "STORAGE_READY=1"
-                                    goto :storage_ready
+                                    set "STATE_READY=1"
+                                    goto storage_ready
                                 )
-                                echo Storage account not ready yet. Attempt %%N of 12...
+                                echo Storage account not ready yet. Attempt %%N of 24...
                                 timeout /t 5 /nobreak >nul
                             )
 
                             :storage_ready
-                            if not defined STORAGE_READY (
+                            if "%STATE_READY%"=="0" (
                                 echo ERROR: Terraform state storage account was not available after waiting.
                                 exit /b 1
                             )
 
-                            set "STATE_ACCESS_KEY="
-                            for /f "delims=" %%K in ('az storage account keys list --resource-group "%TFSTATE_RESOURCE_GROUP%" --account-name "%TFSTATE_STORAGE_ACCOUNT%" --query "[0].value" --output tsv') do set "STATE_ACCESS_KEY=%%K"
-                            if not defined STATE_ACCESS_KEY exit /b 1
-
-                            az storage container create --account-name "%TFSTATE_STORAGE_ACCOUNT%" --name "%TFSTATE_CONTAINER%" --account-key "%STATE_ACCESS_KEY%" --output none
-                            if errorlevel 1 exit /b 1
+                            echo Terraform state storage account is ready.
                         '''
 
                         def stateKey = bat(
@@ -139,6 +141,12 @@ pipeline {
                             error('Unable to retrieve the Terraform state storage account key.')
                         }
                         env.ARM_ACCESS_KEY = stateKey
+
+                        bat '''
+                            @echo off
+                            az storage container create --account-name "%TFSTATE_STORAGE_ACCOUNT%" --name "%TFSTATE_CONTAINER%" --account-key "%ARM_ACCESS_KEY%" --output none
+                            if errorlevel 1 exit /b 1
+                        '''
                     }
                 }
             }
@@ -147,13 +155,14 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
-                    withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}"]) {
+                    withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "TFSTATE_STORAGE_ACCOUNT=${env.TFSTATE_STORAGE_ACCOUNT}", "TFSTATE_CONTAINER=${env.TFSTATE_CONTAINER}", "TFSTATE_KEY=${env.TFSTATE_KEY}"]) {
                         bat '''
                             @echo off
                             terraform init -reconfigure -input=false ^
                               -backend-config="storage_account_name=%TFSTATE_STORAGE_ACCOUNT%" ^
                               -backend-config="container_name=%TFSTATE_CONTAINER%" ^
-                              -backend-config="key=%TFSTATE_KEY%"
+                              -backend-config="key=%TFSTATE_KEY%" ^
+                              -backend-config="access_key=%ARM_ACCESS_KEY%"
                             if errorlevel 1 exit /b 1
                         '''
                     }
@@ -170,8 +179,17 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
-                            powershell '.\\..\\..\\scripts\\adopt-existing.ps1'
+                        withEnv([
+                            "ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}",
+                            "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}",
+                            "TF_VAR_name_prefix=${params.NAME_PREFIX}",
+                            "TF_VAR_location=East US"
+                        ]) {
+                            bat '''
+                                @echo off
+                                powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%WORKSPACE%\\scripts\\adopt-existing.ps1"
+                                if errorlevel 1 exit /b 1
+                            '''
                         }
                     }
                 }
@@ -195,7 +213,12 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
+                        withEnv([
+                            "ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}",
+                            "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}",
+                            "TF_VAR_name_prefix=${params.NAME_PREFIX}",
+                            "TF_VAR_location=East US"
+                        ]) {
                             bat '''
                                 @echo off
                                 if /I "%ACTION%"=="DESTROY" (
@@ -246,7 +269,12 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        withEnv(["ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}", "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}", "TF_VAR_name_prefix=${params.NAME_PREFIX}", "TF_VAR_location=East US"]) {
+                        withEnv([
+                            "ARM_ACCESS_KEY=${env.ARM_ACCESS_KEY}",
+                            "TF_VAR_subscription_id=${env.TF_SUBSCRIPTION_ID}",
+                            "TF_VAR_name_prefix=${params.NAME_PREFIX}",
+                            "TF_VAR_location=East US"
+                        ]) {
                             bat '''
                                 @echo off
                                 terraform apply -input=false -auto-approve tfplan
