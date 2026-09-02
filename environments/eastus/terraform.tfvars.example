@@ -1,0 +1,15 @@
+# Copy this file to terraform.tfvars for local testing.
+# Do not commit terraform.tfvars because it may contain subscription-specific values.
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+location        = "East US"
+name_prefix     = "jd-alz"
+
+hub_address_space = ["10.0.0.0/16"]
+
+common_tags = {
+  project     = "azure-landing-zone"
+  environment = "platform"
+  owner       = "platform-team"
+  managed_by  = "terraform"
+}
