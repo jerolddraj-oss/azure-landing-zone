@@ -2,10 +2,10 @@ locals {
   prefix = lower(replace(var.name_prefix, " ", "-"))
 
   resource_groups = {
-    network    = "${local.prefix}-network-rg"
+    network   = "${local.prefix}-network-rg"
     monitoring = "${local.prefix}-monitoring-rg"
     recovery  = "${local.prefix}-recovery-rg"
-    identity   = "${local.prefix}-identity-rg"
+    identity  = "${local.prefix}-identity-rg"
   }
 }
 
@@ -70,8 +70,8 @@ resource "azurerm_firewall_policy" "hub" {
 }
 
 resource "azurerm_firewall" "hub" {
-  name                = "${local.prefix}-firewall"
-  location            = var.location
+  name               = "${local.prefix}-firewall"
+  location           = var.location
   resource_group_name = azurerm_resource_group.platform["network"].name
   sku_name            = "AZFW_VNet"
   sku_tier            = "Standard"
@@ -97,15 +97,15 @@ resource "azurerm_public_ip" "bastion" {
 }
 
 resource "azurerm_bastion_host" "hub" {
-  name                = "${local.prefix}-bastion"
-  location            = var.location
-  resource_group_name = azurerm_resource_group.platform["network"].name
-  sku                 = "Standard"
-  copy_paste_enabled  = true
-  file_copy_enabled   = false
-  ip_connect_enabled  = true
+  name                   = "${local.prefix}-bastion"
+  location               = var.location
+  resource_group_name    = azurerm_resource_group.platform["network"].name
+  sku                    = "Standard"
+  copy_paste_enabled     = true
+  file_copy_enabled      = false
+  ip_connect_enabled     = true
   shareable_link_enabled = false
-  tunneling_enabled   = true
+  tunneling_enabled      = true
 
   ip_configuration {
     name                 = "primary"
