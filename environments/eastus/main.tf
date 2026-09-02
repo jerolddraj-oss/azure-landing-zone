@@ -2,10 +2,10 @@ locals {
   prefix = lower(replace(var.name_prefix, " ", "-"))
 
   resource_groups = {
-    network   = "${local.prefix}-network-rg"
+    network    = "${local.prefix}-network-rg"
     monitoring = "${local.prefix}-monitoring-rg"
-    recovery  = "${local.prefix}-recovery-rg"
-    identity  = "${local.prefix}-identity-rg"
+    recovery   = "${local.prefix}-recovery-rg"
+    identity   = "${local.prefix}-identity-rg"
   }
 }
 
@@ -70,12 +70,12 @@ resource "azurerm_firewall_policy" "hub" {
 }
 
 resource "azurerm_firewall" "hub" {
-  name               = "${local.prefix}-firewall"
-  location           = var.location
+  name                = "${local.prefix}-firewall"
+  location            = var.location
   resource_group_name = azurerm_resource_group.platform["network"].name
   sku_name            = "AZFW_VNet"
-  sku_tier            = "Standard"
-  firewall_policy_id  = azurerm_firewall_policy.hub.id
+  sku_tier             = "Standard"
+  firewall_policy_id   = azurerm_firewall_policy.hub.id
 
   ip_configuration {
     name                 = "primary"
