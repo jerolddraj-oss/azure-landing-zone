@@ -100,10 +100,30 @@ pipeline {
 
                             az storage account show --resource-group "%TFSTATE_RESOURCE_GROUP%" --name "%TFSTATE_STORAGE_ACCOUNT%" --output none >nul 2>&1
                             if errorlevel 1 (
+                                echo Terraform state storage account not found. Creating it...
                                 az storage account create --resource-group "%TFSTATE_RESOURCE_GROUP%" --name "%TFSTATE_STORAGE_ACCOUNT%" --location "East US" --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false --output none
                                 if errorlevel 1 exit /b 1
                             )
 
+                            echo Waiting for Terraform state storage account to become available...
+                            set "STORAGE_READY="
+                            for /L %%N in (1,1,12) do (
+                                az storage account show --resource-group "%TFSTATE_RESOURCE_GROUP%" --name "%TFSTATE_STORAGE_ACCOUNT%" --output none >nul 2>&1
+                                if not errorlevel 1 (
+                                    set "STORAGE_READY=1"
+                                    goto :storage_ready
+                                )
+                                echo Storage account not ready yet. Attempt %%N of 12...
+                                timeout /t 5 /nobreak >nul
+                            )
+
+                            :storage_ready
+                            if not defined STORAGE_READY (
+                                echo ERROR: Terraform state storage account was not available after waiting.
+                                exit /b 1
+                            )
+
+                            set "STATE_ACCESS_KEY="
                             for /f "delims=" %%K in ('az storage account keys list --resource-group "%TFSTATE_RESOURCE_GROUP%" --account-name "%TFSTATE_STORAGE_ACCOUNT%" --query "[0].value" --output tsv') do set "STATE_ACCESS_KEY=%%K"
                             if not defined STATE_ACCESS_KEY exit /b 1
 
