@@ -74,8 +74,8 @@ resource "azurerm_firewall" "hub" {
   location            = var.location
   resource_group_name = azurerm_resource_group.platform["network"].name
   sku_name            = "AZFW_VNet"
-  sku_tier             = "Standard"
-  firewall_policy_id   = azurerm_firewall_policy.hub.id
+  sku_tier            = "Standard"
+  firewall_policy_id  = azurerm_firewall_policy.hub.id
 
   ip_configuration {
     name                 = "primary"
@@ -130,7 +130,6 @@ resource "azurerm_recovery_services_vault" "platform" {
   location            = var.location
   resource_group_name = azurerm_resource_group.platform["recovery"].name
   sku                 = "Standard"
-  soft_delete_enabled = true
   tags                = var.common_tags
 }
 
@@ -142,6 +141,8 @@ resource "azurerm_user_assigned_identity" "platform" {
 }
 
 resource "azurerm_role_assignment" "platform_reader" {
+  count = var.enable_platform_reader_assignment ? 1 : 0
+
   scope                = "/subscriptions/${var.subscription_id}"
   role_definition_name = "Reader"
   principal_id         = azurerm_user_assigned_identity.platform.principal_id
