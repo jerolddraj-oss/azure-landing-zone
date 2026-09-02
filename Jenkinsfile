@@ -1,5 +1,7 @@
 pipeline {
-    agent any
+    agent {
+        label 'Windows-Agent'
+    }
 
     options {
         timestamps()
@@ -23,7 +25,7 @@ pipeline {
         stage('Terraform Format') {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
-                    sh 'terraform fmt -check -recursive'
+                    bat 'terraform fmt -check -recursive'
                 }
             }
         }
@@ -39,13 +41,12 @@ pipeline {
                     string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                     string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                 ]) {
-                    sh '''
-                        set +x
-                        az login --service-principal \\
-                          --username "$ARM_CLIENT_ID" \\
-                          --password "$ARM_CLIENT_SECRET" \\
-                          --tenant "$ARM_TENANT_ID" >/dev/null
-                        az account set --subscription "$ARM_SUBSCRIPTION_ID"
+                    bat '''
+                        @echo off
+                        az login --service-principal --username "%ARM_CLIENT_ID%" --password "%ARM_CLIENT_SECRET%" --tenant "%ARM_TENANT_ID%"
+                        if errorlevel 1 exit /b 1
+                        az account set --subscription "%ARM_SUBSCRIPTION_ID%"
+                        if errorlevel 1 exit /b 1
                         az account show --query id -o tsv
                     '''
                 }
@@ -64,9 +65,7 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        sh '''
-                            terraform init -upgrade -input=false
-                        '''
+                        bat 'terraform init -upgrade -input=false'
                     }
                 }
             }
@@ -75,7 +74,7 @@ pipeline {
         stage('Terraform Validate') {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
-                    sh 'terraform validate'
+                    bat 'terraform validate'
                 }
             }
         }
@@ -92,10 +91,7 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        sh '''
-                            export TF_VAR_subscription_id="$ARM_SUBSCRIPTION_ID"
-                            terraform plan -input=false -out=tfplan
-                        '''
+                        bat 'set TF_VAR_subscription_id=%ARM_SUBSCRIPTION_ID% && terraform plan -input=false -out=tfplan'
                     }
                 }
             }
@@ -134,10 +130,7 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        sh '''
-                            export TF_VAR_subscription_id="$ARM_SUBSCRIPTION_ID"
-                            terraform apply -input=false -auto-approve tfplan
-                        '''
+                        bat 'set TF_VAR_subscription_id=%ARM_SUBSCRIPTION_ID% && terraform apply -input=false -auto-approve tfplan'
                     }
                 }
             }
@@ -147,7 +140,7 @@ pipeline {
     post {
         always {
             dir("${env.TF_WORKING_DIR}") {
-                sh 'rm -f tfplan'
+                bat 'if exist tfplan del /f /q tfplan'
             }
             deleteDir()
         }
