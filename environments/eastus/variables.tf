@@ -22,6 +22,12 @@ variable "hub_address_space" {
   default     = ["10.0.0.0/16"]
 }
 
+variable "enable_platform_reader_assignment" {
+  description = "Enable the subscription-level Reader assignment for the platform managed identity. Requires Microsoft.Authorization/roleAssignments/write permission for the Jenkins identity."
+  type        = bool
+  default     = false
+}
+
 variable "common_tags" {
   description = "Tags applied to all supported resources."
   type        = map(string)
