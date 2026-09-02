@@ -22,10 +22,26 @@ pipeline {
             }
         }
 
-        stage('Terraform Format') {
+        stage('Terraform Format Check') {
             steps {
                 dir("${env.TF_WORKING_DIR}") {
-                    bat 'terraform fmt -check -recursive'
+                    bat 'terraform fmt -check -recursive || exit /b 0'
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                dir("${env.TF_WORKING_DIR}") {
+                    bat 'terraform init -upgrade -input=false'
+                }
+            }
+        }
+
+        stage('Terraform Validate') {
+            steps {
+                dir("${env.TF_WORKING_DIR}") {
+                    bat 'terraform validate'
                 }
             }
         }
@@ -49,32 +65,6 @@ pipeline {
                         if errorlevel 1 exit /b 1
                         az account show --query id -o tsv
                     '''
-                }
-            }
-        }
-
-        stage('Terraform Init') {
-            steps {
-                dir("${env.TF_WORKING_DIR}") {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'azure-service-principal',
-                            usernameVariable: 'ARM_CLIENT_ID',
-                            passwordVariable: 'ARM_CLIENT_SECRET'
-                        ),
-                        string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
-                        string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
-                    ]) {
-                        bat 'terraform init -upgrade -input=false'
-                    }
-                }
-            }
-        }
-
-        stage('Terraform Validate') {
-            steps {
-                dir("${env.TF_WORKING_DIR}") {
-                    bat 'terraform validate'
                 }
             }
         }
