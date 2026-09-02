@@ -46,19 +46,15 @@ pipeline {
                     string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                     string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                 ]) {
-                    powershell '''
-                        $env:ARM_CLIENT_ID = $env:ARM_CLIENT_ID.Trim()
-                        $env:ARM_CLIENT_SECRET = $env:ARM_CLIENT_SECRET.Trim()
-                        $env:ARM_TENANT_ID = $env:ARM_TENANT_ID.Trim()
-                        $env:ARM_SUBSCRIPTION_ID = $env:ARM_SUBSCRIPTION_ID.Trim()
+                    bat '''
+                        @echo off
+                        az login --service-principal --username "%ARM_CLIENT_ID%" --password "%ARM_CLIENT_SECRET%" --tenant "%ARM_TENANT_ID%" --output none
+                        if errorlevel 1 exit /b 1
 
-                        az login --service-principal --username $env:ARM_CLIENT_ID --password $env:ARM_CLIENT_SECRET --tenant $env:ARM_TENANT_ID --output none
-                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                        az account set --subscription "%ARM_SUBSCRIPTION_ID%"
+                        if errorlevel 1 exit /b 1
 
-                        az account set --subscription $env:ARM_SUBSCRIPTION_ID
-                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-                        Write-Host "Azure authentication successful."
+                        echo Azure authentication successful.
                         az account show --query id -o tsv
                     '''
                 }
@@ -74,13 +70,10 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        powershell '''
-                            $env:ARM_CLIENT_ID = $env:ARM_CLIENT_ID.Trim()
-                            $env:ARM_CLIENT_SECRET = $env:ARM_CLIENT_SECRET.Trim()
-                            $env:ARM_TENANT_ID = $env:ARM_TENANT_ID.Trim()
-                            $env:ARM_SUBSCRIPTION_ID = $env:ARM_SUBSCRIPTION_ID.Trim()
+                        bat '''
+                            @echo off
                             terraform init -upgrade -input=false
-                            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                            if errorlevel 1 exit /b 1
                         '''
                     }
                 }
@@ -104,21 +97,17 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        powershell '''
-                            $env:ARM_CLIENT_ID = $env:ARM_CLIENT_ID.Trim()
-                            $env:ARM_CLIENT_SECRET = $env:ARM_CLIENT_SECRET.Trim()
-                            $env:ARM_TENANT_ID = $env:ARM_TENANT_ID.Trim()
-                            $env:ARM_SUBSCRIPTION_ID = $env:ARM_SUBSCRIPTION_ID.Trim()
-                            $env:TF_VAR_subscription_id = $env:ARM_SUBSCRIPTION_ID
+                        bat '''
+                            @echo off
+                            set "TF_VAR_subscription_id=%ARM_SUBSCRIPTION_ID%"
 
-                            if ($env:ACTION -eq 'DESTROY') {
+                            if /I "%ACTION%"=="DESTROY" (
                                 terraform plan -destroy -input=false -out=tfplan
-                            }
-                            else {
+                            ) else (
                                 terraform plan -input=false -out=tfplan
-                            }
+                            )
 
-                            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                            if errorlevel 1 exit /b 1
                         '''
                     }
                 }
@@ -160,15 +149,11 @@ pipeline {
                         string(credentialsId: 'azure-tenant-id', variable: 'ARM_TENANT_ID'),
                         string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID')
                     ]) {
-                        powershell '''
-                            $env:ARM_CLIENT_ID = $env:ARM_CLIENT_ID.Trim()
-                            $env:ARM_CLIENT_SECRET = $env:ARM_CLIENT_SECRET.Trim()
-                            $env:ARM_TENANT_ID = $env:ARM_TENANT_ID.Trim()
-                            $env:ARM_SUBSCRIPTION_ID = $env:ARM_SUBSCRIPTION_ID.Trim()
-                            $env:TF_VAR_subscription_id = $env:ARM_SUBSCRIPTION_ID
-
+                        bat '''
+                            @echo off
+                            set "TF_VAR_subscription_id=%ARM_SUBSCRIPTION_ID%"
                             terraform apply -input=false -auto-approve tfplan
-                            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                            if errorlevel 1 exit /b 1
                         '''
                     }
                 }
