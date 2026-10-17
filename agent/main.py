@@ -26,7 +26,16 @@ SCHEMA = {
         "location": {"type": "string"},
         "name_prefix": {"type": "string"},
         "hub_address_space": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-        "common_tags": {"type": "object", "additionalProperties": {"type": "string"}},
+        "common_tags": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["project", "environment", "managed_by"],
+            "properties": {
+                "project": {"type": "string"},
+                "environment": {"type": "string"},
+                "managed_by": {"type": "string"},
+            },
+        },
     },
 }
 
