@@ -1,126 +1,85 @@
-# Azure Landing Zone - Terraform
+# Azure CAF Landing Zone — Terraform + GitHub Actions
 
-Enterprise-oriented Azure Landing Zone foundation for a single Azure Pay-As-You-Go subscription, initially targeting East US.
+Enterprise-oriented Azure landing-zone foundation for a single Azure Pay-As-You-Go subscription, initially targeting East US.
 
-## Scope
+## Current foundation
 
-Phase 1 provisions a subscription-scoped foundation:
+- Hub VNet with reserved Azure Firewall, Bastion, and Gateway subnets
+- Azure Firewall Standard and Azure Bastion Standard
+- Log Analytics workspace and Recovery Services vault
+- Platform resource groups and a user-assigned managed identity
+- Python requirements agent that generates validated Terraform variable JSON
+- GitHub Actions validation, Trivy configuration scanning, OIDC-authenticated plan, and protected apply
 
-- Resource groups for platform network, monitoring, security, and recovery
-- Hub VNet with reserved Firewall, Bastion, and Gateway subnets
-- Azure Firewall Standard
-- Azure Bastion Standard
-- Log Analytics workspace
-- Recovery Services vault
-- Subscription-level managed identity
-- Jenkins-based Terraform CI/CD
+> Cost warning: Azure Firewall Standard and Azure Bastion Standard are billable services. Review the Terraform plan and current Azure pricing before approving deployment.
 
-No subscription ID, credentials, state file, or secrets are stored in Git.
-
-## Directory layout
+## Repository layout
 
 ```text
 .
-├── Jenkinsfile
-├── environments/
-│   └── eastus/
-│       ├── backend.tf
-│       ├── main.tf
-│       ├── variables.tf
-│       ├── outputs.tf
-│       ├── versions.tf
-│       └── terraform.tfvars.example
-├── modules/
+├── .github/workflows/terraform-caf.yml
+├── agent/
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── requirements.example.json
 │   └── README.md
-├── scripts/
-│   └── adopt-existing.ps1
+├── environments/eastus/
+│   ├── backend.tf
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── versions.tf
 ├── docs/
 │   ├── architecture.md
-│   └── jenkins-cicd.md
-├── .gitignore
-└── README.md
+│   ├── ai-agent-implementation.md
+│   └── github-actions-oidc.md
+└── Jenkinsfile
 ```
 
-## CI/CD
+The Jenkinsfile is retained for reference during the transition. Do not run Jenkins and GitHub Actions apply jobs concurrently against the same Terraform state. GitHub Actions is the intended deployment path for this implementation.
 
-Jenkins is the authoritative CI/CD pipeline for this repository. GitHub is used for source control and pull-request collaboration.
+## Python agent
 
-The pipeline in `Jenkinsfile` performs:
-
-1. Terraform format check
-2. Azure authentication using Jenkins-managed credentials
-3. Bootstrap of the Azure Storage remote-state location
-4. Terraform initialization using the `azurerm` backend
-5. Adoption of already-existing Azure resources when necessary
-6. Terraform validation
-7. Terraform plan
-8. Manual approval for `APPLY` and `DESTROY`
-9. Terraform apply/destroy using the reviewed plan
-10. Workspace cleanup
-
-GitHub Actions is intentionally not used for deployment or validation in this design.
-
-See [docs/jenkins-cicd.md](docs/jenkins-cicd.md) for Jenkins setup and Azure credential requirements.
-
-## Prerequisites
-
-For local execution:
-
-- Azure CLI
-- Terraform >= 1.9
-- Azure subscription with sufficient permissions
-
-For Jenkins execution, the Windows Jenkins agent needs Git, Terraform, Azure CLI, and PowerShell. The required Jenkins credentials are documented in `docs/jenkins-cicd.md`.
-
-## Local deployment
-
-For Jenkins, use the `PLAN` action first. For local testing, authenticate with Azure CLI and configure the Terraform backend before running Terraform.
+Deterministic mode (no API key):
 
 ```bash
-az login
-az account set --subscription "<SUBSCRIPTION_ID>"
-export TF_VAR_subscription_id="<SUBSCRIPTION_ID>"
-
-cd environments/eastus
-terraform init \
-  -backend-config="storage_account_name=<STATE_STORAGE_ACCOUNT>" \
-  -backend-config="container_name=tfstate" \
-  -backend-config="key=jd-alz-eastus.tfstate"
-terraform fmt -check -recursive
-terraform validate
-terraform plan -out tfplan
+python agent/main.py --config agent/requirements.example.json --dry-run
 ```
 
-For PowerShell:
+Natural-language mode (optional OpenAI API):
 
-```powershell
-$env:TF_VAR_subscription_id = "<SUBSCRIPTION_ID>"
+```bash
+python -m pip install -r agent/requirements.txt
+export OPENAI_API_KEY="..."
+python agent/main.py --request "Create an East US hub using CIDR 10.0.0.0/16 and prefix jd-alz" --dry-run
 ```
 
-The default deployment region is `East US`.
+The agent validates inputs and generates `environments/eastus/terraform.tfvars.json`. The all-zero subscription ID in the example is a placeholder, not a deployable value. Generated variable files are ignored by Git. The agent never logs in to Azure or runs `terraform apply`.
 
-## Terraform state
+## CI/CD setup
 
-Terraform state is now stored remotely in Azure Blob Storage using the `azurerm` backend. This prevents the state from disappearing when a Jenkins workspace is cleaned and provides backend locking for concurrent Terraform operations.
+Follow [GitHub Actions OIDC setup](docs/github-actions-oidc.md) to:
 
-Jenkins bootstraps a dedicated state resource group and storage account automatically. If the derived storage-account name is unavailable because Azure Storage names are globally unique, provide a unique value through the Jenkins `TFSTATE_STORAGE_ACCOUNT` parameter.
+1. Create a dedicated Azure Storage backend and container before Terraform initialization.
+2. Configure a Microsoft Entra app/service principal and GitHub federated credentials.
+3. Assign least-privilege Azure RBAC and Storage Blob Data Contributor on the state container.
+4. Configure repository Actions variables.
+5. Create a protected `production` environment with required reviewers and deployment branch restrictions.
+6. Open a PR to run validation. Merge to `main` to create a plan and then request protected-environment approval before apply.
 
-The current implementation uses an Azure Storage access key through `ARM_ACCESS_KEY` as a transitional measure. The preferred production design is Microsoft Entra/OIDC authentication with least-privilege Storage Blob Data Contributor access.
+Required repository variables:
 
-## Recovery from the previous failed deployment
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `TFSTATE_RESOURCE_GROUP`
+- `TFSTATE_STORAGE_ACCOUNT`
+- `TFSTATE_CONTAINER`
 
-The previous Jenkins run used local Terraform state. Jenkins then cleaned the workspace, so the resources created during that run were no longer represented in Terraform state. The new pipeline imports existing landing-zone resources before planning, allowing the resources to be brought under Terraform management without deleting them first.
+No client secret is required for GitHub Actions OIDC. Terraform state and plan artifacts can contain sensitive information; access must be restricted.
 
-The subscription-level Reader role assignment is disabled by default because the Jenkins service principal currently lacks Azure RBAC `roleAssignments/write` permission. It can be enabled later after the appropriate Azure RBAC permission is deliberately granted.
+## CAF roadmap
 
-## Next phases
+The current repository is a single-subscription landing-zone foundation. Follow-on phases should add management-group hierarchy and policy initiatives, spoke VNets and peering, existing-firewall integration, ExpressRoute connectivity, workload-specific routes and NSGs, and onboarding/migration waves for the 150 on-premises VMware workloads. A reserved GatewaySubnet does not create ExpressRoute connectivity by itself.
 
-1. Move Jenkins Azure authentication to workload identity federation/OIDC
-2. Replace the transitional storage access-key backend authentication with Entra ID
-3. Add management groups and Azure Policy hierarchy
-4. Add hub-and-spoke networking and route tables
-5. Add Private DNS and Private Endpoints
-6. Add Identity/RBAC and Defender for Cloud
-7. Add workload spokes for application/data tiers
-8. Add Azure Virtual WAN, VPN and ExpressRoute where required
-9. Add TFLint/Checkov and stronger Jenkins security gates
+See [architecture](docs/architecture.md) and [AI agent implementation](docs/ai-agent-implementation.md).
