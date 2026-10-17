@@ -113,6 +113,8 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         if network.version != 4:
             raise ValueError("Only IPv4 address spaces are supported by this starter.")
         networks.append(network)
+    if networks[0].prefixlen > 22:
+        raise ValueError("The first hub CIDR must be /22 or larger so three /24 platform subnets can be reserved.")
     for i, left in enumerate(networks):
         for right in networks[i + 1:]:
             if left.overlaps(right):
