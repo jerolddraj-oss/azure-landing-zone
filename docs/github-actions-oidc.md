@@ -26,8 +26,10 @@ Add a federated credential to the app registration:
 
 - Issuer: `https://token.actions.githubusercontent.com`
 - Audience: `api://AzureADTokenExchange`
-- Subject for this repository and production environment:
+- Subject for the production apply job:
   `repo:jerolddraj-oss/azure-landing-zone:environment:production`
+- Subject for the main-branch plan job:
+  `repo:jerolddraj-oss/azure-landing-zone:ref:refs/heads/main`
 
 If using Azure CLI, substitute the real client ID and use the following shape
 for the federated credential JSON:
