@@ -34,21 +34,21 @@ resource "azurerm_subnet" "firewall" {
   name                 = "AzureFirewallSubnet"
   resource_group_name  = azurerm_resource_group.platform["network"].name
   virtual_network_name = azurerm_virtual_network.hub.name
-  address_prefixes     = ["10.0.0.0/24"]
+  address_prefixes     = [cidrsubnet(var.hub_address_space[0], 24 - tonumber(split("/", var.hub_address_space[0])[1]), 0)]
 }
 
 resource "azurerm_subnet" "bastion" {
   name                 = "AzureBastionSubnet"
   resource_group_name  = azurerm_resource_group.platform["network"].name
   virtual_network_name = azurerm_virtual_network.hub.name
-  address_prefixes     = ["10.0.1.0/26"]
+  address_prefixes     = [cidrsubnet(var.hub_address_space[0], 24 - tonumber(split("/", var.hub_address_space[0])[1]), 1)]
 }
 
 resource "azurerm_subnet" "gateway" {
   name                 = "GatewaySubnet"
   resource_group_name  = azurerm_resource_group.platform["network"].name
   virtual_network_name = azurerm_virtual_network.hub.name
-  address_prefixes     = ["10.0.2.0/24"]
+  address_prefixes     = [cidrsubnet(var.hub_address_space[0], 24 - tonumber(split("/", var.hub_address_space[0])[1]), 2)]
 }
 
 resource "azurerm_public_ip" "firewall" {
