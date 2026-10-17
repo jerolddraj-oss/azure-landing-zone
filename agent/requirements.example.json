@@ -1,0 +1,13 @@
+{
+  "subscription_id": "00000000-0000-0000-0000-000000000000",
+  "location": "East US",
+  "name_prefix": "jd-alz",
+  "hub_address_space": [
+    "10.0.0.0/16"
+  ],
+  "common_tags": {
+    "project": "azure-landing-zone",
+    "environment": "platform",
+    "managed_by": "terraform"
+  }
+}
